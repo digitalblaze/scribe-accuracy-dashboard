@@ -1,0 +1,7 @@
+streamlit
+pandas
+plotly
+g2p_en
+nltk
+rapidfuzz
+cryptography
