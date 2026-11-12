@@ -110,8 +110,9 @@ st.info(
     + _extra
 )
 
-tab_over, tab_vid, tab_miss, tab_time, tab_cues, tab_ab, tab_gloss, tab_method = st.tabs(
-    ["Overview", "Per video", "Most-missed words", "Accuracy over time", "Side-by-side errors", "Vocabulary A/B", "Phonetic glossary", "Method & caveats"])
+tab_over, tab_vid, tab_miss, tab_time, tab_cues, tab_ab, tab_tr, tab_gloss, tab_method = st.tabs(
+    ["Overview", "Per video", "Most-missed words", "Accuracy over time", "Side-by-side errors", "Vocabulary A/B", "Translation",
+     "Phonetic glossary", "Method & caveats"])
 
 with tab_over:
     left, right = st.columns([3, 2])
@@ -265,6 +266,50 @@ with tab_ab:
         "on unseen content. The videos cover different topics and share almost no terms, so a glossary has to be built for each batch "
         "of content. The generic 47-term medical list made no real difference, because it did not contain the names that Scribe actually misses."
     )
+
+with tab_tr:
+    tr = data.get("translation")
+    if not tr:
+        st.info("No translation results in this data set yet.")
+    else:
+        LANGN = {"es-ES": "Spanish (es-ES)", "fr-FR": "French (fr-FR)"}
+        st.subheader("Zoom Translator: Spanish and French")
+        st.caption("Source: the Scribe transcript from the glossary run, translated cue by cue with Zoom Translator batch. "
+                   "There is no human translation to score against, so these are automatic integrity checks, not a quality score.")
+        cols = st.columns(len(tr["langs"]))
+        for col, (lang, a) in zip(cols, tr["langs"].items()):
+            with col:
+                st.markdown(f"**{LANGN.get(lang, lang)}**")
+                st.metric("Subtitle cues translated", f"{a['cues'] - a['empty']:,} / {a['cues']:,}")
+                st.metric("Numbers preserved", f"{a['num_ok'] / max(a['num_cues'], 1):.1%}", f"{a['num_ok']} of {a['num_cues']} cues with numbers", delta_color="off")
+                st.metric("Drug / brand names kept", f"{a['term_kept'] / max(a['term_hits'], 1):.1%}", f"{a['term_kept']} of {a['term_hits']} mentions", delta_color="off")
+                st.metric("Left untranslated", f"{a['identical']}")
+                st.metric("Text length vs English", f"{a['length_ratio']:.2f}x")
+        st.markdown(
+            """
+**What the checks mean**
+- *Numbers preserved*: every number in the English cue (digits or spelled-out, decimal comma accepted) also appears in the translation. A miss usually means a number was reworded or a placeholder was invented.
+- *Drug / brand names kept*: the glossary terms still appear (ignoring accents and endings, so *dacarbazine* → *dacarbazina* and *mekanib* → *mékanib* count as correct, as a translator should adapt them).
+- *Cue alignment*: every English cue maps to exactly one translated cue, so timing carries over unchanged and the SRT/VTT files are drop-in.
+"""
+        )
+        st.warning(
+            "Spot-checks found real errors that these automatic checks cannot catch. In one French cue the 5.9% / 4.2% recurrence rates "
+            "were attached to the wrong operations (lobectomy and wedge swapped). Where the speaker said \"3 point something percent\", "
+            "the translation invented placeholders (\"3, X %\", \"3,xx %\"). Medical translation should be reviewed by a bilingual clinician before publishing."
+        )
+        st.markdown("**Side-by-side samples**")
+        for smp in tr["samples"]:
+            with st.expander(f"{smp['video']} at {smp['time'] // 60}:{smp['time'] % 60:02d}"):
+                st.markdown(f"**English:** {smp['en']}")
+                for lang in tr["langs"]:
+                    st.markdown(f"**{LANGN.get(lang, lang)}:** {smp.get(lang, '')}")
+        vrows = [{"Language": l, "Video": v["video"], "Cues": v["cues"], "Translated cues": v["translated_cues"],
+                  "Numbers kept": f"{v['num_ok']}/{v['num_cues']}", "Names kept": f"{v['term_kept']}/{v['term_hits']}"}
+                 for l, a in tr["langs"].items() for v in a["videos"]]
+        st.markdown("**Per video**")
+        st.dataframe(pd.DataFrame(vrows), hide_index=True, use_container_width=True)
+        st.caption("Translator output files are available as SRT and VTT per language in the local project; they are not published here.")
 
 with tab_gloss:
     st.write("Terms Scribe got wrong, with a pronunciation guide to give to Zoom (or to a speaker/editor). "
