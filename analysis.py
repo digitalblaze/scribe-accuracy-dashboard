@@ -297,6 +297,8 @@ def main():
               f"technical-term accuracy {tot['tech_accuracy']:.2%}")
         for v in vids:
             print(f"   {v['name']}: acc {v['accuracy']:.2%}  (S{v['subs']} D{v['dels']} I{v['ins']} of {v['ref_words']})  tech {v['tech_accuracy']:.2%}")
+    if os.path.exists("glossary_terms_curated.txt"):
+        result["glossary_terms"] = [l.strip() for l in open("glossary_terms_curated.txt") if l.strip() and not l.startswith("#")]
     json.dump(result, open(f"{base}/analysis.json", "w"))
     print(f"wrote {base}/analysis.json")
 

@@ -58,10 +58,12 @@ path = ENC_PATH
 data = load_data()
 tags = list(data["tags"])
 
+RUN_LABELS = {"plain": "No custom vocabulary", "vocab": "Generic medical vocabulary (47 terms)", "glossary": "Targeted glossary (11 terms)"}
+
 with st.sidebar:
     st.header("Settings")
     tag = st.selectbox("Scribe run", tags, index=tags.index("plain") if "plain" in tags else 0,
-                       format_func=lambda t: {"plain": "No custom vocabulary", "vocab": "With starter vocabulary"}.get(t, t))
+                       format_func=lambda t: RUN_LABELS.get(t, t))
     hide_stop = st.checkbox("Hide common words in missed-word list", value=False)
     st.divider()
     st.subheader("Cost assumptions")
@@ -96,10 +98,16 @@ c[2].metric("Technical-term accuracy", f"{tot['tech_accuracy']:.1%}",
 c[3].metric("Best / worst video", f"{vdf.accuracy.max():.1%} / {vdf.accuracy.min():.1%}")
 c[4].metric("Zoom credits / media-min", f"{credits_used / total_min:.4f}")
 
+_gl = data["tags"].get("glossary")
+_pl = data["tags"].get("plain")
+_extra = ""
+if _gl and _pl:
+    _extra = (f" Adding a targeted glossary of {len(data.get('glossary_terms', []))} terms raised technical-term accuracy from "
+              f"{_pl['totals']['tech_accuracy']:.0%} to {_gl['totals']['tech_accuracy']:.0%} (see Vocabulary A/B).")
 st.info(
     f"Scribe matched the human captions on **{tot['accuracy']:.1%}** of words overall, but only **{tot['tech_accuracy']:.0%}** of "
-    f"technical terms. Almost all remaining errors are a handful of drug and brand names that a custom vocabulary can target. "
-    f"Plain-English narration is already essentially at human level."
+    f"technical terms in this run. Plain-English narration is already near human level; the remaining errors are mostly drug and brand names."
+    + _extra
 )
 
 tab_over, tab_vid, tab_miss, tab_time, tab_cues, tab_ab, tab_gloss, tab_method = st.tabs(
@@ -204,27 +212,59 @@ with tab_cues:
     st.dataframe(edf[["Time", "Human caption", "Scribe"]], hide_index=True, width='stretch', height=420)
 
 with tab_ab:
-    if len(tags) < 2:
-        st.write("Only one run is available.")
-    else:
-        rows = []
-        for t in tags:
-            for v in data["tags"][t]["videos"]:
-                rows.append({"video": v["name"].replace("S3_Medical_Literature_", "Video "), "run": t,
-                             "accuracy": v["accuracy"], "technical accuracy": v["tech_accuracy"]})
-        ab = pd.DataFrame(rows)
-        l, r_ = st.columns(2)
-        for col, key in ((l, "accuracy"), (r_, "technical accuracy")):
-            fig = px.bar(ab, x="video", y=key, color="run", barmode="group", title=key.capitalize(),
-                         color_discrete_sequence=[BLUE, AMBER])
-            fig.update_yaxes(tickformat=".1%", range=[0.6 if "tech" in key else 0.95, 1.0])
-            fig.update_layout(xaxis_title=None, yaxis_title=None, legend_title=None)
-            col.plotly_chart(fig, width='stretch')
-        st.warning(
-            "The starter vocabulary (47 generic medical terms) made **no meaningful difference**: it did not contain the "
-            "brand/drug names Scribe actually misses. The glossary tab lists those names. The next test should send them as "
-            "the vocabulary and re-score."
-        )
+    order = [t for t in ("plain", "vocab", "glossary") if t in data["tags"]]
+    st.write("Same four videos, same model, three vocabulary settings.")
+    cols = st.columns(len(order))
+    base_t = data["tags"]["plain"]["totals"] if "plain" in data["tags"] else None
+    for col, t in zip(cols, order):
+        tt = data["tags"][t]["totals"]
+        col.markdown(f"**{RUN_LABELS.get(t, t)}**")
+        col.metric("Word error rate", f"{tt['wer']:.2%}",
+                   None if t == "plain" or not base_t else f"{(tt['wer'] - base_t['wer']) * 100:+.2f} pts", delta_color="inverse")
+        col.metric("Technical-term accuracy", f"{tt['tech_accuracy']:.1%}",
+                   None if t == "plain" or not base_t else f"{(tt['tech_accuracy'] - base_t['tech_accuracy']) * 100:+.1f} pts")
+        col.metric("Total errors", f"{tt['subs'] + tt['dels'] + tt['ins']:,}",
+                   None if t == "plain" or not base_t else f"{(tt['subs'] + tt['dels'] + tt['ins']) - (base_t['subs'] + base_t['dels'] + base_t['ins']):+,}",
+                   delta_color="inverse")
+    rows = []
+    for t in order:
+        for v in data["tags"][t]["videos"]:
+            rows.append({"video": v["name"].replace("S3_Medical_Literature_", "Video "), "run": RUN_LABELS.get(t, t),
+                         "accuracy": v["accuracy"], "technical accuracy": v["tech_accuracy"]})
+    ab = pd.DataFrame(rows)
+    l, r_ = st.columns(2)
+    for col, key in ((l, "accuracy"), (r_, "technical accuracy")):
+        fig = px.bar(ab, x="video", y=key, color="run", barmode="group", title=key.capitalize(),
+                     color_discrete_sequence=["#9aa3b2", AMBER, GREEN])
+        fig.update_yaxes(tickformat=".1%", range=[0.6 if "tech" in key else 0.95, 1.0])
+        fig.update_layout(xaxis_title=None, yaxis_title=None, legend_title=None, legend=dict(orientation="h", y=-0.2))
+        col.plotly_chart(fig, width='stretch')
+
+    if "glossary" in data["tags"] and "plain" in data["tags"] and data.get("glossary_terms"):
+        st.subheader("Glossary terms: before and after")
+        def _m(t):
+            return {m["word"]: m for m in data["tags"][t]["missed"]}
+        mp, mg = _m("plain"), _m("glossary")
+        refc = {}
+        for m in list(mp.values()) + list(mg.values()):
+            refc[m["word"]] = m["occurrences"]
+        trows = []
+        for term in data["glossary_terms"]:
+            w = term.lower()
+            occ = refc.get(w)
+            if occ is None:
+                continue
+            b_, a_ = mp.get(w, {}).get("missed", 0), mg.get(w, {}).get("missed", 0)
+            trows.append({"Term": term, "Times spoken": occ, "Missed without glossary": b_, "Missed with glossary": a_,
+                          "Fixed": b_ - a_, "Scribe still wrote": ", ".join(mg.get(w, {}).get("heard_as", {}).keys())})
+        tdf = pd.DataFrame(trows).sort_values("Missed without glossary", ascending=False)
+        st.dataframe(tdf, hide_index=True, width='stretch')
+    st.warning(
+        "**Read this as a best case, not a forecast.** The glossary terms were taken from these same four videos, so this shows what "
+        "happens when the team knows the drug and brand names in advance (the realistic workflow for course content), not performance "
+        "on unseen content. The videos cover different topics and share almost no terms, so a glossary has to be built for each batch "
+        "of content. The generic 47-term medical list made no real difference, because it did not contain the names that Scribe actually misses."
+    )
 
 with tab_gloss:
     st.write("Terms Scribe got wrong, with a pronunciation guide to give to Zoom (or to a speaker/editor). "
