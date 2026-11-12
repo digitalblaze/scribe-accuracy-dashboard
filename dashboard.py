@@ -29,7 +29,7 @@ def decrypt_data(password: str):
     blob = open(ENC_PATH, "rb").read()
     salt, token = blob[:16], blob[16:]
     key = base64.urlsafe_b64encode(
-        Scrypt(salt=salt, length=32, n=2**15, r=8, p=1).derive(password.encode()))
+        Scrypt(salt=salt, length=32, n=2**17, r=8, p=1).derive(password.encode()))
     try:
         return json.loads(Fernet(key).decrypt(token))
     except InvalidToken:
