@@ -56,6 +56,7 @@ def load_data():
 
 path = ENC_PATH
 data = load_data()
+data["tags"] = {t: v for t, v in data["tags"].items() if t in ("plain", "glossary")}
 tags = list(data["tags"])
 
 RUN_LABELS = {"plain": "No custom vocabulary", "glossary": "Targeted glossary (11 terms)"}
