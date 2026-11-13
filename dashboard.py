@@ -58,7 +58,7 @@ path = ENC_PATH
 data = load_data()
 tags = list(data["tags"])
 
-RUN_LABELS = {"plain": "No custom vocabulary", "vocab": "Generic medical vocabulary (47 terms)", "glossary": "Targeted glossary (11 terms)"}
+RUN_LABELS = {"plain": "No custom vocabulary", "glossary": "Targeted glossary (11 terms)"}
 
 with st.sidebar:
     st.header("Settings")
@@ -213,8 +213,8 @@ with tab_cues:
     st.dataframe(edf[["Time", "Human caption", "Scribe"]], hide_index=True, width='stretch', height=420)
 
 with tab_ab:
-    order = [t for t in ("plain", "vocab", "glossary") if t in data["tags"]]
-    st.write("Same four videos, same model, three vocabulary settings.")
+    order = [t for t in ("plain", "glossary") if t in data["tags"]]
+    st.write("Same four videos, same model, two vocabulary settings (none, and a targeted glossary).")
     cols = st.columns(len(order))
     base_t = data["tags"]["plain"]["totals"] if "plain" in data["tags"] else None
     for col, t in zip(cols, order):
@@ -236,7 +236,7 @@ with tab_ab:
     l, r_ = st.columns(2)
     for col, key in ((l, "accuracy"), (r_, "technical accuracy")):
         fig = px.bar(ab, x="video", y=key, color="run", barmode="group", title=key.capitalize(),
-                     color_discrete_sequence=["#9aa3b2", AMBER, GREEN])
+                     color_discrete_sequence=["#9aa3b2", GREEN])
         fig.update_yaxes(tickformat=".1%", range=[0.6 if "tech" in key else 0.95, 1.0])
         fig.update_layout(xaxis_title=None, yaxis_title=None, legend_title=None, legend=dict(orientation="h", y=-0.2))
         col.plotly_chart(fig, width='stretch')
@@ -264,7 +264,7 @@ with tab_ab:
         "**Read this as a best case, not a forecast.** The glossary terms were taken from these same four videos, so this shows what "
         "happens when the team knows the drug and brand names in advance (the realistic workflow for course content), not performance "
         "on unseen content. The videos cover different topics and share almost no terms, so a glossary has to be built for each batch "
-        "of content. The generic 47-term medical list made no real difference, because it did not contain the names that Scribe actually misses."
+        "of content."
     )
 
 with tab_tr:

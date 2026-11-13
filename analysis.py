@@ -269,6 +269,8 @@ def main():
     result = {"reference": "Brightcove WebVTT captions (assumed human-produced)", "tags": {}}
     for d in sorted(glob.glob(f"{base}/scribe-*/")):
         tag = os.path.basename(d.rstrip("/")).replace("scribe-", "")
+        if tag == "vocab":
+            continue
         vids = []
         for vtt in sorted(glob.glob(f"{a.vtt_dir}/*.vtt")):
             name = os.path.basename(vtt).split(".")[0]
